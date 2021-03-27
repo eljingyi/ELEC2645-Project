@@ -1,0 +1,249 @@
+#include "mbed.h"
+#include "stm32f413h_discovery_ts.h"
+#include "stm32f413h_discovery_lcd.h"
+
+TS_StateTypeDef TS_State = { 0 };
+volatile int g_touch_flag = 0;
+
+// Stuct used to store co-ordinate values 
+struct Position {
+	int x;
+	int y;
+};
+
+void user_input(Position &position); 
+void touch_isr();
+
+/*
+void user_input(Position &position) {
+    
+    while(g_touch_flag == 0) {
+        BSP_TS_GetState(&TS_State);
+        
+        if(TS_State.touchDetected) {
+            /* One or dual touch have been detected          */
+            touch_isr();
+            g_touch_flag = 0;  // if it has, clear the flag
+
+            /* Get X position of the first touch post calibrated */
+            uint16_t x1 = TS_State.touchX[0];
+            uint16_t y1 = TS_State.touchY[0];
+            
+            position.x = x1;
+            position.y = y1;
+            
+            //ball.set_position(x1,y1);
+            
+            
+            printf("the position now is x = %d, y = %d \n ",position.x,position.y);
+            wait_ms(100);
+        } 
+    }
+    
+    printf("im out of the loop");
+}
+
+*/
+
+// event triggered interrupt (will only interrupt when a touch is detected)
+void touch_isr() {
+    g_touch_flag = 1; // set ISR flag to 1 
+}
+
+class Ball {
+    public:
+        Ball ball();
+        Position position;
+        void ball_init();
+        void draw_ball(uint8_t colour);
+        void ball_update(int x, int y);
+        void set_position(int x, int y);
+        void set_velocity(Position velocity);
+        void ball_movement();
+        
+        Position get_velocity();
+        Position get_position();
+    
+    private:
+        int _x;
+        int _y;
+        //int _x_diff; 
+        //int _y_diff;
+        Position _velocity;
+};
+
+void Ball::ball_init() {
+    _x = 120;
+    _y = 170;
+    
+    _velocity.x = 2;
+    _velocity.y = 2; 
+    //_x_diff = 0; 
+    //_y_diff = 0;
+}
+
+void Ball::draw_ball(uint8_t colour) {
+    // Draw the ball
+    BSP_LCD_SetTextColor(colour);
+    BSP_LCD_FillCircle(_x,_y,10); 
+}
+
+void Ball::ball_update(int x, int y) {
+    
+    //_x = _x + _velocity.x;
+    //_y += _velocity.y;
+    
+    int diff_x = x - _x;
+    int diff_y = y - _y;
+    //int sensitivity = 3; 
+    
+    printf("original x value is %d, y value is %d\n",_x,_y);
+    
+    //_x += diff_x/sensitivity;
+    //_y += diff_y/sensitivity;
+    
+    set_position(_x+diff_x, _y+diff_y);
+    printf("new values set!\n");
+    printf("original x value is %d, y value is %d\n",_x,_y);
+    printf("current x value is %d, y value is %d\n",diff_x,diff_y);
+}
+
+
+void Ball::set_position(int x, int y) {
+    _x = x;
+    _y = y;
+ 
+}
+
+void Ball::set_velocity(Position velocity) {
+    _velocity.x = velocity.x;
+    _velocity.y = velocity.y;
+    
+}
+
+Position Ball::get_velocity() {
+    return _velocity;
+}
+
+Position Ball::get_position() {
+    position.x = _x;
+    position.y = _y;
+    return position;
+}
+
+
+class Tictactoe_engine {
+    public: 
+        void tictactoe_init();
+        void draw_slingshot();
+        void draw_tictactoe();
+        void update();
+        void draw();
+        Position position;
+        void set_colour(uint8_t colour);
+        int get_colour();
+    private:
+        Ball _ball;
+        void check_wall_collision();
+        int _colour;
+};
+
+void Tictactoe_engine::tictactoe_init() {
+    _ball.ball_init();
+}
+
+void Tictactoe_engine::draw_slingshot() {
+    //drawing the slingshot on the LCD screen
+    BSP_LCD_SetTextColor(LCD_COLOR_BROWN);
+    BSP_LCD_FillRect(113,190,15,50); 
+    BSP_LCD_FillCircle(120,175,30);
+    BSP_LCD_SetTextColor(LCD_COLOR_LIGHTGREEN);
+    BSP_LCD_FillCircle(120,175,15);
+    BSP_LCD_FillRect(90,120,80,50); 
+    BSP_LCD_SetTextColor(LCD_COLOR_BROWN);
+    BSP_LCD_FillRect(90,150,15,20); 
+    BSP_LCD_FillRect(136,150,15,20); 
+    BSP_LCD_SetTextColor(LCD_COLOR_BLACK);
+    BSP_LCD_FillRect(90,165,15,7); 
+    BSP_LCD_FillRect(136,165,15,7); 
+}
+
+void Tictactoe_engine::draw_tictactoe() {
+    // Draw the background for the tictactoe game
+    BSP_LCD_Clear(LCD_COLOR_CYAN);
+    BSP_LCD_SetTextColor(LCD_COLOR_LIGHTGREEN);
+    BSP_LCD_FillRect(0,80,240,160);
+    // Draw the tictactoe board
+    BSP_LCD_SetTextColor(LCD_COLOR_WHITE);
+    BSP_LCD_FillRect(75,10,90,90);
+    //Draw the tictaetoe lines
+    BSP_LCD_SetTextColor(LCD_COLOR_BLACK);
+    BSP_LCD_DrawLine(105,10,105,100);
+    BSP_LCD_DrawLine(75,40,165,40);
+    BSP_LCD_DrawLine(135,10,135,100);
+    BSP_LCD_DrawLine(75,70,165,70);
+}
+
+void Tictactoe_engine::draw() {
+    int colour = get_colour();
+    draw_tictactoe();
+    draw_slingshot();
+    _ball.draw_ball(colour);
+    Position ball_pos = _ball.get_position();
+    _ball.set_position(ball_pos.x,ball_pos.y);
+    //_ball.set_position(120,170); // default ball position
+    //user_input(position);
+    update();
+    //_ball.set_position(position.x,position.y);
+    //_ball.draw_ball(colour);
+    
+}
+
+void Tictactoe_engine::update() {
+    int counter = 0;
+    //while(counter < 100) {
+        //printf("engine update\n");
+        counter = counter + 1;
+        //printf("counter %d",counter);
+        BSP_TS_GetState(&TS_State);
+        if(TS_State.touchDetected) {
+            touch_isr();
+            uint16_t x1 = TS_State.touchX[0];
+            uint16_t y1 = TS_State.touchY[0];
+            
+            _ball.ball_update(x1,y1);
+            printf("ball coordinates updated x = %d, y = %d\n",x1,y1);
+        }
+        draw();
+        printf("ball new location\n");
+        g_touch_flag = 0;
+        
+    //}
+    
+}
+
+void Tictactoe_engine::set_colour(uint8_t colour) { _colour = colour;}
+
+int Tictactoe_engine::get_colour() {return _colour;}
+
+int main() {
+    printf("Draw on the screen!\n");
+
+    BSP_LCD_Init();
+
+    /* Touchscreen initialization */
+    if (BSP_TS_Init(BSP_LCD_GetXSize(), BSP_LCD_GetYSize()) == TS_ERROR) {
+        printf("BSP_TS_Init error\n");
+    }
+
+    /* Clear the LCD */
+    BSP_LCD_Clear(LCD_COLOR_WHITE);
+    
+    Ball ball;
+    Tictactoe_engine engine;
+    engine.tictactoe_init();
+   // ball.set_position(120,170);
+    engine.set_colour(LCD_COLOR_BLACK);
+    engine.draw();
+    
+}
