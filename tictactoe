@@ -85,7 +85,7 @@ class Ball {
         //Position diff;
         void ball_init();
         void draw_ball(uint16_t colour);
-        void draw_elastic();
+        //void draw_elastic();
         void ball_update_position(Position input);
         void ball_update_movement();
         void set_position(int x, int y);
@@ -199,8 +199,8 @@ class Slingshot {
         //void movement();
         void elastic_init();
         void draw_default_elastic();
-        void draw_elastic();
-        void force_on_ball();
+        void draw_elastic(Position pos);
+        void force_on_ball(Position pos);
         void set_ball_pos();
         
         void set_default_elastic();
@@ -266,11 +266,10 @@ void Slingshot::init() {
 //}
 
 void Slingshot::elastic_init() {
-    _pos.x = BALL_X;
-    _pos.y = BALL_Y;
+    
 }
 
-void Slingshot::draw_elastic() {
+void Slingshot::draw_elastic(Position pos) {
     //int elastic_left_x = 90;
     //int elastic_left_y = 165;
     //int elastic_right_x = 136;
@@ -278,15 +277,15 @@ void Slingshot::draw_elastic() {
 
     
     //Position pos = _ball.get_position(Position pos);
-    printf("elastic x = %d, y = %d",_pos.x,_pos.y);
+    printf("elastic x = %d, y = %d",pos.x,pos.y);
     int x_coord,y_coord;
     // if the ball goes away from the slingshot, the elastic will just stay in default position
-    if ( _pos.y <= 170 ) {
+    if ( pos.y <= 170 ) {
         x_coord = BALL_X; 
         y_coord = BALL_Y;
     } else {
-        x_coord = _pos.x; 
-        y_coord = _pos.y;
+        x_coord = pos.x; 
+        y_coord = pos.y;
     }
     
     BSP_LCD_SetTextColor(LCD_COLOR_BLACK);
@@ -306,13 +305,8 @@ void Slingshot::draw_elastic() {
   
 }
 
-/*
-void Slingshot::update_elastic() {
-    Position pos = _ball.get_position();
-    if (pos
-} */
 
-void Slingshot::force_on_ball() {
+void Slingshot::force_on_ball(Position pos) {
     
     /* notes:
     resultant force on the ball = - sqrt( resultant force in the x direction^2 + resultant force in the y_direction^2)
@@ -320,13 +314,11 @@ void Slingshot::force_on_ball() {
     */
     //Position pos = _ball.get_position();
     Position force;
-    //int elastic_left_x = 90;
-    //int elastic_left_y = 165;
-    //int elastic_right_x = 136;
-    //int elastic_right_y = 165;
-    //force.x = _elastic_left.x + _elastic_right.x - 2*_pos.x;
-    force.x = 90 + 136 - 2*_pos.x;
-    force.y = 165 + 165 - 2*_pos.y;
+    
+    //force.x = _elastic_left.x + _elastic_right.x - 2*pos.x;
+    //force.Y = _elastic_left.Y + _elastic_right.Y - 2*pos.Y;
+    force.x = 90 + 136 - 2*pos.x;
+    force.y = 165 + 165 - 2*pos.y;
     //_resultant_force = sqrt(force.x^2+force.y^2);
     
     
@@ -343,10 +335,6 @@ void Slingshot::force_on_ball() {
 }
 
 
-void Slingshot::set_ball_pos() {
-    Position pos = _ball.get_position();
-    _pos = pos;
-}
 
 
 
@@ -445,7 +433,7 @@ void Tictactoe_engine::draw() {
     printf("drawing ball in engine");
     Position ball_pos = _ball.get_position();
     printf("ball coord x=%d, y=%d", ball_pos.x,ball_pos.y);
-    _ball.draw_elastic();
+    _slingshot.draw_elastic(ball_pos);
     printf("drawing elastic in engine");
     
    // Position ball_pos = _ball.get_position();
@@ -478,7 +466,7 @@ void Tictactoe_engine::update(Position input) {
     if(g_buttonA_flag == 0) {
     	_ball.ball_update_position(input);
     } else { // shoot the ball when button A is pressed 
-    	_slingshot.force_on_ball(); // set the velocity of the ball
+    	_slingshot.force_on_ball(input); // set the velocity of the ball
         _ball.ball_update_movement(); // update the movement of the ball
     }
     
