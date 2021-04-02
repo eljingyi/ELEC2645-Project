@@ -1,149 +1,401 @@
 #include "mbed.h"
 #include "stm32f413h_discovery_ts.h"
 #include "stm32f413h_discovery_lcd.h"
+#include "math.h"
+
+#define MASS 2
+#define BALL_X 120 // initial ball x coordinate
+#define BALL_Y 170 // initial ball y coordinate
+#define TIME 0.1 // change in time 
 
 TS_StateTypeDef TS_State = { 0 };
 volatile int g_touch_flag = 0;
+volatile int g_buttonA_flag = 0;
 
-// Stuct used to store co-ordinate values 
+/* Stuct used to store co-ordinate values */
 struct Position {
 	int x;
 	int y;
 };
 
+// button A object
+InterruptIn buttonA(p29);
+
+// get the coordinates when a user touches the screen 
 void user_input(Position &position); 
+// initialise button A 
+void buttonA_init();
+// button A event-triggered interrupt
+void buttonA_isr();
+// touch detection event-triggered interrupt 
 void touch_isr();
 
-/*
 void user_input(Position &position) {
     
-    while(g_touch_flag == 0) {
-        BSP_TS_GetState(&TS_State);
-        
-        if(TS_State.touchDetected) {
-            /* One or dual touch have been detected          */
-            touch_isr();
-            g_touch_flag = 0;  // if it has, clear the flag
-
-            /* Get X position of the first touch post calibrated */
-            uint16_t x1 = TS_State.touchX[0];
-            uint16_t y1 = TS_State.touchY[0];
-            
-            position.x = x1;
-            position.y = y1;
-            
-            //ball.set_position(x1,y1);
-            
-            
-            printf("the position now is x = %d, y = %d \n ",position.x,position.y);
-            wait_ms(100);
-        } 
-    }
     
-    printf("im out of the loop");
+    BSP_TS_GetState(&TS_State);
+    
+    if(TS_State.touchDetected) {
+        /* One or dual touch have been detected */        
+        touch_isr();
+        //g_touch_flag = 0;  // if it has, clear the flag
+
+        /* Get position of the first touch post calibrated */
+        uint16_t x1 = TS_State.touchX[0];
+        uint16_t y1 = TS_State.touchY[0];
+        
+        position.x = x1;
+        position.y = y1;
+        
+        //ball.set_position(x1,y1);
+        printf("isr is %d",g_touch_flag);
+        
+        printf("the position now is x = %d, y = %d \n ",position.x,position.y);
+        wait_ms(100);
+    } 
+    
+    //printf("im out of the loop");
+} 
+
+void buttonA_init() {
+	// buttonA is a pull down resistor (look for the rising edge to fire the interrupt)
+	buttonA.rise(&buttonA_isr);
+	// Disable the internal pull down of button A due to the internal pull-down resistor due to InterruptIn 
+	buttonA.mode(PullNone);
 }
 
-*/
 
-// event triggered interrupt (will only interrupt when a touch is detected)
+/* event triggered interrupt (will only interrupt when a touch is detected)*/
 void touch_isr() {
-    g_touch_flag = 1; // set ISR flag to 1 
+    g_touch_flag = 1; /* set ISR flag to 1 */
 }
 
+void buttonA_isr() {
+	g_buttonA_flag = 1; // set ISR flag to 1
+}
+
+
+
+////////////////////////////ball class////////////////////////////////////
 class Ball {
     public:
-        Ball ball();
-        Position position;
+        //Ball ball();
+        //Position input;
+        //Position position;
+        //Position diff;
         void ball_init();
-        void draw_ball(uint8_t colour);
-        void ball_update(int x, int y);
+        void draw_ball(uint16_t colour);
+        void draw_elastic();
+        void ball_update_position(Position input);
+        void ball_update_movement();
         void set_position(int x, int y);
         void set_velocity(Position velocity);
-        void ball_movement();
         
         Position get_velocity();
         Position get_position();
+        Position get_difference();
+        Position get_elastic_left();
+        Position get_elastic_right();
     
     private:
         int _x;
         int _y;
-        //int _x_diff; 
-        //int _y_diff;
+        int _diff_x; 
+        int _diff_y;
+        int _force;
         Position _velocity;
+        Position _elastic_left;
+        Position _elastic_right;
 };
 
 void Ball::ball_init() {
-    _x = 120;
-    _y = 170;
-    
-    _velocity.x = 2;
-    _velocity.y = 2; 
-    //_x_diff = 0; 
-    //_y_diff = 0;
+    /* initial position*/
+    _x = BALL_X;
+    _y = BALL_Y;
+    /* original velocity*/
+    /* velocity is zero when there is no force from the elastic */
+    _velocity.x = 0;
+    _velocity.y = 0; 
+    /* original difference from origin */
+    //_diff_x = 0; 
+    //_diff_y = 0;
 }
 
-void Ball::draw_ball(uint8_t colour) {
-    // Draw the ball
+void Ball::draw_ball(uint16_t colour) {
+    /* Draw the ball */
     BSP_LCD_SetTextColor(colour);
+    /* radius of the ball = 10 */
     BSP_LCD_FillCircle(_x,_y,10); 
 }
 
-void Ball::ball_update(int x, int y) {
+
+
+void Ball::ball_update_position(Position input) {
+    //user_input(input); /* get the value of the new coordinates using pass by reference */
     
-    //_x = _x + _velocity.x;
-    //_y += _velocity.y;
     
-    int diff_x = x - _x;
-    int diff_y = y - _y;
-    //int sensitivity = 3; 
+    // dont allow input infront of the slingshot 
+    if(input.y < 170 + 10) {
+        _y = 170;
+    } else {
+        _x = input.x;
+        _y = input.y;
+    }
     
     printf("original x value is %d, y value is %d\n",_x,_y);
     
-    //_x += diff_x/sensitivity;
-    //_y += diff_y/sensitivity;
     
-    set_position(_x+diff_x, _y+diff_y);
-    printf("new values set!\n");
-    printf("original x value is %d, y value is %d\n",_x,_y);
-    printf("current x value is %d, y value is %d\n",diff_x,diff_y);
 }
 
 
+void Ball::ball_update_movement() {
+    //int sensitivity = 3; 
+    //_x -= _diff_x/sensitivity;
+   // _y -= _diff_y/sensitivity;
+    //printf("working?\n");
+    
+    /* updating the location of the ball */
+    _x += _velocity.x*TIME;
+    _y -= _velocity.y*TIME;
+}
+
+
+
+/* set the position of the ball */
 void Ball::set_position(int x, int y) {
     _x = x;
     _y = y;
- 
 }
 
+/* set the velocity of the ball */
 void Ball::set_velocity(Position velocity) {
     _velocity.x = velocity.x;
     _velocity.y = velocity.y;
     
 }
 
-Position Ball::get_velocity() {
-    return _velocity;
-}
 
+
+
+/* get the current position of the ball*/
 Position Ball::get_position() {
+	Position position;
     position.x = _x;
     position.y = _y;
+    printf("ball position x = %d, y = %d",position.x,position.y);
     return position;
 }
 
 
+
+
+
+
+////////////////////////////slingshot class////////////////////////////////////
+class Slingshot {
+    public:
+        
+        
+        //void movement();
+        void elastic_init();
+        void draw_default_elastic();
+        void draw_elastic();
+        void force_on_ball();
+        void set_ball_pos();
+        
+        void set_default_elastic();
+        //Position get_elastic_left;
+        //Position get_elastic_right;
+        
+        
+        //Position force;
+        //Position pos;
+        
+    private:
+        Ball _ball;
+        Position _pos;
+        
+        //int force;
+        //Position _difference;
+        //Position _velocity;
+        
+};
+
+/*
+
+void Slingshot::movement() {
+    // E = 0.5*distance moved*force 
+    // in a ideal environment, the change in the distance moved by the ball = force applied to the slingshot
+    // E = 0.5*mass*velocity 
+    // velocity = sqrt(distance^2/mass)
+    // let mass of ball = 1
+    
+    
+    _difference = ball.get_difference();
+    _velocity.y = sqrt(_difference.y^2);
+    
+    if (_difference.x == 0 ) {
+        _velocity.y = _difference.y);
+        ball.set_velocity(_velocity);
+        printf("velocity added!!!!! v = \n",_velocity.y);
+    }
+    
+}
+
+
+*/
+
+/* initialising the slingshot*/
+/*
+void Slingshot::init() {
+    set_ball_pos();
+    default_position();
+}
+*/
+
+
+/* original position for the elastic */
+//void Slingshot::draw_default_elastic() {
+//    BSP_LCD_SetTextColor(LCD_COLOR_BLACK);
+    /* left elastic */
+//    Point points_left[] = {{_elastic_left.x,_elastic_left.y},{_elastic_left.x,_elastic_left.y+5},BALL_X,BALL_Y+5},{BALL_X,BALL_Y}};
+//    BSP_LCD_FillPolygon(points_left,4);
+    /* right elastic */
+//    Point points_right[] = {{_elastic_right.x,_elastic_right.y},{_elastic_right.x,_elastic_right.y+5},{BALL_X,BALL_Y+5},{BALL_X,BALL_Y}};
+ //   BSP_LCD_FillPolygon(points_right,4);
+//}
+
+void Slingshot::elastic_init() {
+    _pos.x = BALL_X;
+    _pos.y = BALL_Y;
+}
+
+void Slingshot::draw_elastic() {
+    //int elastic_left_x = 90;
+    //int elastic_left_y = 165;
+    //int elastic_right_x = 136;
+    //int elastic_right_y = 165;
+
+    
+    //Position pos = _ball.get_position(Position pos);
+    printf("elastic x = %d, y = %d",_pos.x,_pos.y);
+    int x_coord,y_coord;
+    // if the ball goes away from the slingshot, the elastic will just stay in default position
+    if ( _pos.y <= 170 ) {
+        x_coord = BALL_X; 
+        y_coord = BALL_Y;
+    } else {
+        x_coord = _pos.x; 
+        y_coord = _pos.y;
+    }
+    
+    BSP_LCD_SetTextColor(LCD_COLOR_BLACK);
+    /* left elastic */
+    //Point points_left[] = {{elastic_left_x,elastic_left_y},{elastic_left_x,elastic_left_y+5},x_coord,y_coord+5},{x_coord,y_coord}};
+    //BSP_LCD_FillPolygon(points_left,4);
+    /* right elastic */
+    //Point points_right[] = {{elastic_right_x,elastic_right_y},{elastic_right_x,elastic_right_y+5},{x_coord,y_coord+5},{x_coord,y_coord}};
+    //BSP_LCD_FillPolygon(points_right,4);
+    
+    /* left elastic */
+    Point points_left[] = {{90,165},{90,165+5},{x_coord,y_coord+5},{x_coord,y_coord}};
+    BSP_LCD_FillPolygon(points_left,4);
+    /* right elastic */
+    Point points_right[] = {{136,165},{136,165+5},{x_coord,y_coord+5},{x_coord,y_coord}};
+    BSP_LCD_FillPolygon(points_right,4);
+  
+}
+
+/*
+void Slingshot::update_elastic() {
+    Position pos = _ball.get_position();
+    if (pos
+} */
+
+void Slingshot::force_on_ball() {
+    
+    /* notes:
+    resultant force on the ball = - sqrt( resultant force in the x direction^2 + resultant force in the y_direction^2)
+    _force = - sqrt((_elastic_left.x + _elastic_right.x - 2*pos.x)^2 + (_elastic_left.y + _elastic_right.y - 2*pos.y)^2 );
+    */
+    //Position pos = _ball.get_position();
+    Position force;
+    //int elastic_left_x = 90;
+    //int elastic_left_y = 165;
+    //int elastic_right_x = 136;
+    //int elastic_right_y = 165;
+    //force.x = _elastic_left.x + _elastic_right.x - 2*_pos.x;
+    force.x = 90 + 136 - 2*_pos.x;
+    force.y = 165 + 165 - 2*_pos.y;
+    //_resultant_force = sqrt(force.x^2+force.y^2);
+    
+    
+    /* velocity in the x direction*/
+    int deltaVx = -(force.x/MASS)*TIME;
+    int deltaVy = -(force.y/MASS)*TIME;
+    
+    Position v;
+    /* updating the velocity of the ball */
+    v.x += deltaVx;
+    v.y += deltaVy;
+    
+    _ball.set_velocity(v);
+}
+
+
+void Slingshot::set_ball_pos() {
+    Position pos = _ball.get_position();
+    _pos = pos;
+}
+
+
+
+
+/*set the default elastic coordinates*/
+/*
+void Slingshot::set_default_elastic() {
+    _elastic_left.x = 90;
+    _elastic_left.y = 165;
+    _elastic_right.x = 136;
+    _elastic_right.y = 165;
+}
+*/
+
+/*
+
+// get the default coordinates of the elastic on the slingshot (left side)
+Position Slingshot::get_elastic_left {
+    _elastic_left.x = 90;
+    _elastic_left.y = 165;
+    return _elastic_left;
+}
+
+// get the coordinates of the elastic on the slingshot (right side)
+Position Slingshot::get_elastic_right {
+    _elastic_right.x = 136;
+    _elastic_right.y = 165;
+    return _elastic_right;
+}
+ 
+ */
+
+////////////////////////////tictaetoe engine class/////////////////////////////////////////
 class Tictactoe_engine {
     public: 
         void tictactoe_init();
         void draw_slingshot();
         void draw_tictactoe();
-        void update();
+        void update(Position input);
         void draw();
+        //Position input;
         Position position;
-        void set_colour(uint8_t colour);
+        Position current_ball_pos;
+        int check_hit_board();
+        void set_colour(uint16_t colour);
         int get_colour();
     private:
         Ball _ball;
+        Slingshot _slingshot;
         void check_wall_collision();
         int _colour;
 };
@@ -188,62 +440,154 @@ void Tictactoe_engine::draw() {
     int colour = get_colour();
     draw_tictactoe();
     draw_slingshot();
+    printf("im here!");
     _ball.draw_ball(colour);
+    printf("drawing ball in engine");
     Position ball_pos = _ball.get_position();
-    _ball.set_position(ball_pos.x,ball_pos.y);
+    printf("ball coord x=%d, y=%d", ball_pos.x,ball_pos.y);
+    _ball.draw_elastic();
+    printf("drawing elastic in engine");
+    
+   // Position ball_pos = _ball.get_position();
+    //_ball.set_position(ball_pos.x,ball_pos.y);
     //_ball.set_position(120,170); // default ball position
     //user_input(position);
-    update();
+    //update();
     //_ball.set_position(position.x,position.y);
     //_ball.draw_ball(colour);
     
 }
 
-void Tictactoe_engine::update() {
-    int counter = 0;
-    //while(counter < 100) {
-        //printf("engine update\n");
-        counter = counter + 1;
-        //printf("counter %d",counter);
-        BSP_TS_GetState(&TS_State);
-        if(TS_State.touchDetected) {
-            touch_isr();
-            uint16_t x1 = TS_State.touchX[0];
-            uint16_t y1 = TS_State.touchY[0];
-            
-            _ball.ball_update(x1,y1);
-            printf("ball coordinates updated x = %d, y = %d\n",x1,y1);
-        }
-        draw();
-        printf("ball new location\n");
-        g_touch_flag = 0;
+void Tictactoe_engine::update(Position input) {
+    
+    printf("engine update\n");
+    /* g_touch_flag = 0 when no touch is detected 
+    when no touch is detected, it detects for touch on the screen */
+    /*if (g_touch_flag == 0) {
+    user_input(input); //while loop when touch is detected
+     _ball.ball_update_position(input);
+    } else {
+        // when touch is not detected (flag = 1), make the ball move towards the target 
+        _slingshot.force_on_ball(); // set the velocity of the ball
+        _ball.ball_update_movement(); // update the movement of the ball
         
-    //}
+    }
+    */
+    
+    // when button is not pressed, get the coordinates of the input 
+    if(g_buttonA_flag == 0) {
+    	_ball.ball_update_position(input);
+    } else { // shoot the ball when button A is pressed 
+    	_slingshot.force_on_ball(); // set the velocity of the ball
+        _ball.ball_update_movement(); // update the movement of the ball
+    }
     
 }
 
-void Tictactoe_engine::set_colour(uint8_t colour) { _colour = colour;}
+// with reference to the pong code that was provided 
+void Tictactoe_engine::check_wall_collision() {
+    current_ball_pos = _ball.get_position();
+    Position current_velocity = _ball.get_velocity();
+    if (current_ball_pos.x + 10 <= 0) {
+        // hit left wall
+        current_ball_pos.x = 10; // prevents the ball from going out of the screen 
+        current_velocity.x = -current_velocity.x; // make the ball move in the opposite direction
+    } else if (current_ball_pos.x + 10 >= 240) {
+        // hit right wall
+        current_ball_pos.x = 240; // prevents the ball from going out of the screen 
+        current_velocity.x = -current_velocity.x; // make the ball move in the opposite direction
+    } else if (current_ball_pos.y + 10 >= 240) {
+        // hit bottom wall
+        current_ball_pos.y = 240; // hit the ground 
+    }
+    
+    _ball.set_velocity(current_velocity);
+    _ball.set_position(current_ball_pos.x,current_ball_pos.y);
+    
+}
+
+int Tictactoe_engine::check_hit_board() {
+    /* tic tac toe board labelled as follows 
+        __1__|__2_|__3__
+        __4__|__5_|__6__
+          7  |  8 |  9
+    */
+   current_ball_pos = _ball.get_position(); 
+   // the ball must lie in the board to be considered a hit
+   //min x position of the board + radius of the ball
+   int min_x = 15+10;
+   //max x position of the board - radius of the ball
+   int max_x = 165-10;
+   //min y position of the board + radius of the ball
+   int min_y = 10 + 10;
+   //min y position of the board + radius of the ball
+   int max_y = 100 - 10;
+   if(current_ball_pos.x >= min_x && current_ball_pos.x <= max_x) {
+       if(current_ball_pos.y >= min_y && current_ball_pos.y <= max_y) {
+           // ball sucessfully hit the board
+           return 1;
+       }
+   } else return 0;
+}
+
+
+
+
+void Tictactoe_engine::set_colour(uint16_t colour) { _colour = colour;}
 
 int Tictactoe_engine::get_colour() {return _colour;}
 
-int main() {
-    printf("Draw on the screen!\n");
+/////////////////////////////////////////main////////////////////////////
+/////////objects////////
+Tictactoe_engine engine;
+Ball ball;
 
+void init();
+void draw();
+
+void init() {
     BSP_LCD_Init();
-
     /* Touchscreen initialization */
     if (BSP_TS_Init(BSP_LCD_GetXSize(), BSP_LCD_GetYSize()) == TS_ERROR) {
         printf("BSP_TS_Init error\n");
     }
+    engine.tictactoe_init();
+}
 
+void draw() {
     /* Clear the LCD */
     BSP_LCD_Clear(LCD_COLOR_WHITE);
-    
-    Ball ball;
-    Tictactoe_engine engine;
-    engine.tictactoe_init();
-   // ball.set_position(120,170);
-    engine.set_colour(LCD_COLOR_BLACK);
+    printf("clear\n");
     engine.draw();
+    printf("draw\n");
+}
+
+int main() {
+    Position input;
+    
+    init();
+    printf("im here init\n");
+    engine.set_colour(LCD_COLOR_YELLOW); // set colour of the ball 
+    printf("im here colour\n");
+    draw();
+    printf("im here draw\n");
+    
+    while(g_touch_flag == 0) {
+        user_input(input);
+        engine.update(input);
+        draw();
+        wait_ms(1);
+        printf("im in the buttonA flag loop");
+    }   
+    
+    
+        //engine.update();
+        //printf("im at main\n");
+        //draw();
+        //printf("im at main last one\n");
+        //wait_ms(1);
+        //printf("im here\n");
+    
+    
     
 }
