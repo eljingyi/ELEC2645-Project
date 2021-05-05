@@ -1,16 +1,30 @@
+/**
+ * This is a demo which uses the ST DISCO_F413ZH LCD and touch screen
+ * Contains a FRIDA FRD154BP2901 LCD display
+ * Code from https://os.mbed.com/teams/ST/code/DISCO_F413ZH-touch-screen-demo/?platform=ST-Discovery-F413H
+ */
+
 #include "mbed.h"
 #include "stm32f413h_discovery_ts.h"
 #include "stm32f413h_discovery_lcd.h"
-#include "math.h"
+#include <vector>
+#include <string>
 
 #define MASS 2
 #define BALL_X 120 // initial ball x coordinate
 #define BALL_Y 170 // initial ball y coordinate
 #define TIME 0.1 // change in time 
+#define YES 3
+#define NO 4
+#define SCREENSIZE_X 240
+#define SCREENSIZE_Y 240
+
+#define USER 0
+#define COMPUTER 1
+#define USERMOVE 'X'
+#define COMPUTERMOVE 'O'
 
 TS_StateTypeDef TS_State = { 0 };
-volatile int g_touch_flag = 0;
-volatile int g_buttonA_flag = 0;
 
 /* Stuct used to store co-ordinate values */
 struct Position {
@@ -18,380 +32,137 @@ struct Position {
 	int y;
 };
 
-// button A object
-InterruptIn buttonA(p29);
 
-// get the coordinates when a user touches the screen 
-void user_input(Position &position); 
-// initialise button A 
-void buttonA_init();
-// button A event-triggered interrupt
-void buttonA_isr();
-// touch detection event-triggered interrupt 
-void touch_isr();
-
-void user_input(Position &position) {
+////ball///
+class TTT_Ball {
+    public:
+        void init(int x_pos,int y_pos);
+        void draw(uint16_t colour);
+        void update();
+        void get_touch_position(int &touch_detected);
+        void set_position(int x_position,int y_position);
+        void set_velocity(int x_velocity,int y_velocity);
     
+        int get_x_position();
+        int get_y_position();
+        int get_x_velocity();
+        int get_y_velocity();
+
+        
+
+        
+    private:
+        //coordinates of the ball
+        int _x_position;
+        int _y_position;
+        //velocity of the ball 
+        int _x_velocity;
+        int _y_velocity;
+      
+};
+
+void TTT_Ball::init(int x_pos,int y_pos) {
+    _x_position = x_pos;
+    _y_position = y_pos;
+}
+
+void TTT_Ball::draw(uint16_t colour) {
+    //draw the ball 
+    BSP_LCD_SetTextColor(colour);
+    //radius of the ball = 10 
+    BSP_LCD_FillCircle(_x_position,_y_position,10); 
+}
+
+void TTT_Ball::update() {
+    //change in the ball position when theres velocity 
+    //increased the velocity by 5 as its too slow
+    _x_position = _x_position + 5*_x_velocity;
+    _y_position = _y_position + 5*_y_velocity;
+    printf("x = %d, y = %d\n",_x_position,_y_position);
+    printf("vx = %d, vy = %d\n",_x_velocity,_y_velocity);
+}
+
+void TTT_Ball::get_touch_position(int &touch_detected) {
     BSP_TS_GetState(&TS_State);
-    
     if(TS_State.touchDetected) {
-        /* One or dual touch have been detected */        
-        touch_isr();
-        //g_touch_flag = 0;  // if it has, clear the flag
-
-        /* Get position of the first touch post calibrated */
+        //touch is detected
+        //get the coordinates of the touch detected
         uint16_t x1 = TS_State.touchX[0];
         uint16_t y1 = TS_State.touchY[0];
-        
-        position.x = x1;
-        position.y = y1;
-        
-        //ball.set_position(x1,y1);
-        printf("isr is %d",g_touch_flag);
-        
-        printf("the position now is x = %d, y = %d \n ",position.x,position.y);
-        wait_ms(100);
-    } 
-    
-    //printf("im out of the loop");
-} 
 
-void buttonA_init() {
-	// buttonA is a pull down resistor (look for the rising edge to fire the interrupt)
-	buttonA.rise(&buttonA_isr);
-	// Disable the internal pull down of button A due to the internal pull-down resistor due to InterruptIn 
-	buttonA.mode(PullNone);
-}
-
-
-/* event triggered interrupt (will only interrupt when a touch is detected)*/
-void touch_isr() {
-    g_touch_flag = 1; /* set ISR flag to 1 */
-}
-
-void buttonA_isr() {
-	g_buttonA_flag = 1; // set ISR flag to 1
-}
-
-
-
-////////////////////////////ball class////////////////////////////////////
-class Ball {
-    public:
-        //Ball ball();
-        //Position input;
-        //Position position;
-        //Position diff;
-        void ball_init();
-        void draw_ball(uint16_t colour);
-        //void draw_elastic();
-        void ball_update_position(Position input);
-        void ball_update_movement();
-        void set_position(int x, int y);
-        void set_velocity(Position velocity);
-        
-        Position get_velocity();
-        Position get_position();
-        Position get_difference();
-        Position get_elastic_left();
-        Position get_elastic_right();
-    
-    private:
-        int _x;
-        int _y;
-        int _diff_x; 
-        int _diff_y;
-        int _force;
-        Position _velocity;
-        Position _elastic_left;
-        Position _elastic_right;
-};
-
-void Ball::ball_init() {
-    /* initial position*/
-    _x = BALL_X;
-    _y = BALL_Y;
-    /* original velocity*/
-    /* velocity is zero when there is no force from the elastic */
-    _velocity.x = 0;
-    _velocity.y = 0; 
-    /* original difference from origin */
-    //_diff_x = 0; 
-    //_diff_y = 0;
-}
-
-void Ball::draw_ball(uint16_t colour) {
-    /* Draw the ball */
-    BSP_LCD_SetTextColor(colour);
-    /* radius of the ball = 10 */
-    BSP_LCD_FillCircle(_x,_y,10); 
-}
-
-
-
-void Ball::ball_update_position(Position input) {
-    //user_input(input); /* get the value of the new coordinates using pass by reference */
-    
-    
-    // dont allow input infront of the slingshot 
-    if(input.y < 170 + 10) {
-        _y = 170;
+        _x_position = x1;
+        _y_position = y1;
+        //flag to tell that touch is detected
+        touch_detected = YES;
+        printf("Touch detected\n");
+        printf("Touch = %d\n",touch_detected);
     } else {
-        _x = input.x;
-        _y = input.y;
+        //flag to tell that touch is not detected
+        touch_detected = NO;
+        printf("Touch = %d\n",touch_detected);
     }
-    
-    printf("original x value is %d, y value is %d\n",_x,_y);
-    
-    
 }
 
+void TTT_Ball::set_position(int x_position,int y_position) {
+    _x_position = x_position;
+    _y_position = y_position;
+}
 
-void Ball::ball_update_movement() {
-    //int sensitivity = 3; 
-    //_x -= _diff_x/sensitivity;
-   // _y -= _diff_y/sensitivity;
-    //printf("working?\n");
-    
-    /* updating the location of the ball */
-    _x += _velocity.x*TIME;
-    _y -= _velocity.y*TIME;
-    printf("velocity x=%d,y=%d\n",_x,_y);
+void TTT_Ball::set_velocity(int x_velocity,int y_velocity) {
+    _x_velocity = x_velocity;
+    _y_velocity = y_velocity;
 }
 
 
 
-/* set the position of the ball */
-void Ball::set_position(int x, int y) {
-    _x = x;
-    _y = y;
+int TTT_Ball::get_x_position() {
+    return _x_position;
 }
 
-/* set the velocity of the ball */
-void Ball::set_velocity(Position velocity) {
-    printf("Ball: Set Velocity\n");
-    _velocity.x = velocity.x;
-    _velocity.y = velocity.y;
-    printf("velocity x=%d,y=%d\n",_velocity.x,_velocity.y);
+int TTT_Ball::get_y_position() {
+     return _y_position;
 }
 
-
-
-
-/* get the current position of the ball*/
-Position Ball::get_position() {
-	Position position;
-    position.x = _x;
-    position.y = _y;
-    printf("ball position x = %d, y = %d\n",position.x,position.y);
-    return position;
+int TTT_Ball::get_x_velocity() {
+    return _x_velocity;
 }
 
+int TTT_Ball::get_y_velocity() {
+     return _y_velocity;
+}
 
+///end///
 
-
-
-
-////////////////////////////slingshot class////////////////////////////////////
+///slingshot//
 class Slingshot {
     public:
-        
-        
-        //void movement();
-        void elastic_init();
-        void draw_default_elastic();
-        void draw_elastic(Position pos);
-        void force_on_ball(Position pos);
-        void set_ball_pos();
-        
-        void set_default_elastic();
-        //Position get_elastic_left;
-        //Position get_elastic_right;
-        
-        
-        //Position force;
-        //Position pos;
-        
-    private:
-        Ball _ball;
-        Position _pos;
-        
-        //int force;
-        //Position _difference;
-        //Position _velocity;
-        
-};
-
-/*
-
-void Slingshot::movement() {
-    // E = 0.5*distance moved*force 
-    // in a ideal environment, the change in the distance moved by the ball = force applied to the slingshot
-    // E = 0.5*mass*velocity 
-    // velocity = sqrt(distance^2/mass)
-    // let mass of ball = 1
-    
-    
-    _difference = ball.get_difference();
-    _velocity.y = sqrt(_difference.y^2);
-    
-    if (_difference.x == 0 ) {
-        _velocity.y = _difference.y);
-        ball.set_velocity(_velocity);
-        printf("velocity added!!!!! v = \n",_velocity.y);
-    }
-    
-}
-
-
-*/
-
-/* initialising the slingshot*/
-/*
-void Slingshot::init() {
-    set_ball_pos();
-    default_position();
-}
-*/
-
-
-/* original position for the elastic */
-//void Slingshot::draw_default_elastic() {
-//    BSP_LCD_SetTextColor(LCD_COLOR_BLACK);
-    /* left elastic */
-//    Point points_left[] = {{_elastic_left.x,_elastic_left.y},{_elastic_left.x,_elastic_left.y+5},BALL_X,BALL_Y+5},{BALL_X,BALL_Y}};
-//    BSP_LCD_FillPolygon(points_left,4);
-    /* right elastic */
-//    Point points_right[] = {{_elastic_right.x,_elastic_right.y},{_elastic_right.x,_elastic_right.y+5},{BALL_X,BALL_Y+5},{BALL_X,BALL_Y}};
- //   BSP_LCD_FillPolygon(points_right,4);
-//}
-
-void Slingshot::elastic_init() {
-    
-}
-
-void Slingshot::draw_elastic(Position pos) {
-    //int elastic_left_x = 90;
-    //int elastic_left_y = 165;
-    //int elastic_right_x = 136;
-    //int elastic_right_y = 165;
-
-    
-    //Position pos = _ball.get_position(Position pos);
-    printf("elastic x = %d, y = %d\n",pos.x,pos.y);
-    int x_coord,y_coord;
-    // if the ball goes away from the slingshot, the elastic will just stay in default position
-    if ( pos.y <= 170 ) {
-        x_coord = BALL_X; 
-        y_coord = BALL_Y;
-    } else {
-        x_coord = pos.x; 
-        y_coord = pos.y;
-    }
-    
-    BSP_LCD_SetTextColor(LCD_COLOR_BLACK);
-    /* left elastic */
-    //Point points_left[] = {{elastic_left_x,elastic_left_y},{elastic_left_x,elastic_left_y+5},x_coord,y_coord+5},{x_coord,y_coord}};
-    //BSP_LCD_FillPolygon(points_left,4);
-    /* right elastic */
-    //Point points_right[] = {{elastic_right_x,elastic_right_y},{elastic_right_x,elastic_right_y+5},{x_coord,y_coord+5},{x_coord,y_coord}};
-    //BSP_LCD_FillPolygon(points_right,4);
-    
-    /* left elastic */
-    Point points_left[] = {{90,165},{90,165+5},{x_coord,y_coord+5},{x_coord,y_coord}};
-    BSP_LCD_FillPolygon(points_left,4);
-    /* right elastic */
-    Point points_right[] = {{136,165},{136,165+5},{x_coord,y_coord+5},{x_coord,y_coord}};
-    BSP_LCD_FillPolygon(points_right,4);
-  
-}
-
-
-void Slingshot::force_on_ball(Position pos) {
-    
-    /* notes:
-    resultant force on the ball = - sqrt( resultant force in the x direction^2 + resultant force in the y_direction^2)
-    _force = - sqrt((_elastic_left.x + _elastic_right.x - 2*pos.x)^2 + (_elastic_left.y + _elastic_right.y - 2*pos.y)^2 );
-    */
-    //Position pos = _ball.get_position();
-    Position force;
-    
-    //force.x = _elastic_left.x + _elastic_right.x - 2*pos.x;
-    //force.Y = _elastic_left.Y + _elastic_right.Y - 2*pos.Y;
-    force.x = 90 + 136 - 2*pos.x;
-    force.y = 165 + 165 - 2*pos.y;
-    //_resultant_force = sqrt(force.x^2+force.y^2);
-    printf("force x=%d, y = %d\n",force.x,force.y);
-    
-    /* velocity in the x direction*/
-    int deltaVx = -(force.x/MASS)*TIME;
-    int deltaVy = -(force.y/MASS)*TIME;
-    printf("delta vx=%d, vy = %d\n",deltaVx,deltaVy);
-    
-    Position v;
-    /* updating the velocity of the ball */
-    v.x = deltaVx;
-    v.y = deltaVy;
-    
-    _ball.set_velocity(v);
-}
-
-
-/*set the default elastic coordinates*/
-/*
-void Slingshot::set_default_elastic() {
-    _elastic_left.x = 90;
-    _elastic_left.y = 165;
-    _elastic_right.x = 136;
-    _elastic_right.y = 165;
-}
-*/
-
-/*
-
-// get the default coordinates of the elastic on the slingshot (left side)
-Position Slingshot::get_elastic_left {
-    _elastic_left.x = 90;
-    _elastic_left.y = 165;
-    return _elastic_left;
-}
-
-// get the coordinates of the elastic on the slingshot (right side)
-Position Slingshot::get_elastic_right {
-    _elastic_right.x = 136;
-    _elastic_right.y = 165;
-    return _elastic_right;
-}
- 
- */
-
-////////////////////////////tictaetoe engine class/////////////////////////////////////////
-class Tictactoe_engine {
-    public: 
-        void tictactoe_init();
+        void init(int ball_x,int ball_y);
         void draw_slingshot();
-        void draw_tictactoe();
-        void update(Position input);
-        void draw();
-        //Position input;
-        Position position;
-        Position current_ball_pos;
-        int check_hit_board();
-        void set_colour(uint16_t colour);
-        int get_colour();
+        void draw_elastic(int x, int y);
+        void update(int x, int y);
+        void force_on_ball(int &deltaVx, int &deltaVy);
+        void set_elastic_position(int x_position, int y_position);
+        
     private:
-        Ball _ball;
-        Slingshot _slingshot;
-        void check_wall_collision();
-        int _colour;
+        TTT_Ball _ball;
+        int _x_position;
+        int _y_position;
+        int _force_x;
+        int _force_y;
 };
 
-void Tictactoe_engine::tictactoe_init() {
-    _ball.ball_init();
+void Slingshot::init(int ball_x,int ball_y) {
+    set_elastic_position(ball_x, ball_y);
 }
 
-void Tictactoe_engine::draw_slingshot() {
-    //drawing the slingshot on the LCD screen
+void Slingshot::draw_slingshot() {
+    //drawing of the background
+    //draw sky
+    BSP_LCD_Clear(LCD_COLOR_CYAN);
+    //draw ground
+    BSP_LCD_SetTextColor(LCD_COLOR_LIGHTGREEN);
+    BSP_LCD_FillRect(0,80,240,160);
+    //drawing of the slingshot
     BSP_LCD_SetTextColor(LCD_COLOR_BROWN);
     BSP_LCD_FillRect(113,190,15,50); 
     BSP_LCD_FillCircle(120,175,30);
@@ -404,177 +175,894 @@ void Tictactoe_engine::draw_slingshot() {
     BSP_LCD_SetTextColor(LCD_COLOR_BLACK);
     BSP_LCD_FillRect(90,165,15,7); 
     BSP_LCD_FillRect(136,165,15,7); 
-}
-
-void Tictactoe_engine::draw_tictactoe() {
-    // Draw the background for the tictactoe game
-    BSP_LCD_Clear(LCD_COLOR_CYAN);
-    BSP_LCD_SetTextColor(LCD_COLOR_LIGHTGREEN);
-    BSP_LCD_FillRect(0,80,240,160);
-    // Draw the tictactoe board
+    
+    //BSP_LCD_DisplayStringAtLine(160, (uint8_t *)"Don't pass this line!");
+    //draw a maximum limit that the elastic should be pulled 
     BSP_LCD_SetTextColor(LCD_COLOR_WHITE);
-    BSP_LCD_FillRect(75,10,90,90);
-    //Draw the tictaetoe lines
+    BSP_LCD_FillRect(10,170,30,2); 
+    BSP_LCD_FillRect(50,170,30,2); 
+    BSP_LCD_FillRect(160,170,30,2); 
+    BSP_LCD_FillRect(200,170,30,2); 
+    //BSP_LCD_SetFont(&Font8);
+    //BSP_LCD_DisplayStringAt(0, 150, (uint8_t *)"Don't cross this line!", LEFT_MODE);
+    
+
+}
+
+void Slingshot::draw_elastic(int x, int y) {
+    //drawing of the elastic band on the slingshot    
+    if(y < 130) {
+        x = BALL_X;
+        y = BALL_Y;
+    }
     BSP_LCD_SetTextColor(LCD_COLOR_BLACK);
-    BSP_LCD_DrawLine(105,10,105,100);
-    BSP_LCD_DrawLine(75,40,165,40);
-    BSP_LCD_DrawLine(135,10,135,100);
-    BSP_LCD_DrawLine(75,70,165,70);
-}
-
-void Tictactoe_engine::draw() {
-    int colour = get_colour();
-    draw_tictactoe();
-    draw_slingshot();
-    printf("im here!\n");
-    _ball.draw_ball(colour);
-    printf("drawing ball in engine\n");
-    Position ball_pos = _ball.get_position();
-    //printf("ball coord x=%d, y=%d\n", ball_pos.x,ball_pos.y);
-    _slingshot.draw_elastic(ball_pos);
-    printf("drawing elastic in engine\n");
-    
-}
-
-void Tictactoe_engine::update(Position input) {
-    
-    printf("Tictactoe_engine: engine update\n");
-    /* g_touch_flag = 0 when no touch is detected 
-    when no touch is detected, it detects for touch on the screen */
-    /*if (g_touch_flag == 0) {
-    user_input(input); //while loop when touch is detected
-     _ball.ball_update_position(input);
-    } else {
-        // when touch is not detected (flag = 1), make the ball move towards the target 
-        _slingshot.force_on_ball(); // set the velocity of the ball
-        _ball.ball_update_movement(); // update the movement of the ball
-        
-    }
+    /* explaination of the numbers used here:
+    left elastic:
+    Point points_left[] = {{elastic_left_x_coordinate ,elastic_left_y_coordinate},{elastic_left_x_coordinate,elastic_left_y_coordinate+5},_x_position,_y_position+5},{_x_position,_y_position}};
+    right elastic:
+    Point points_right[] = {{elastic_right_x_coordinate,elastic_right_y_coordinate},{elastic_right_x_coordinate,elastic_right_y_coordinate+5},{_x_position,_y_position+5},{_x_position,_y_position}};
     */
+    //left elastic 
+    Point points_left[] = {{90,165},{90,165+5},{x,y+5},{x,y}};
+    BSP_LCD_FillPolygon(points_left,4);
+    //right elastic 
+    Point points_right[] = {{136,165},{136,165+5},{x,y+5},{x,y}};
+    BSP_LCD_FillPolygon(points_right,4);
+}
+
+void Slingshot::force_on_ball(int &deltaVx, int &deltaVy) {
+    /* notes:
+    resultant force on the ball = - sqrt( resultant force in the x direction^2 + resultant force in the y_direction^2)
+    _force = - sqrt((_elastic_left.x + _elastic_right.x - 2*pos.x)^2 + (_elastic_left.y + _elastic_right.y - 2*pos.y)^2 );
     
-    // when button is not pressed, get the coordinates of the input 
-    if(g_buttonA_flag == 0) {
-    	_ball.ball_update_position(input);
-    	printf("im at updating position");
-    } else { // shoot the ball when button A is pressed 
-        //g_touch_flag = 1; //stop the touch detection loop
-        //g_buttonA_flag = 0; // clear the flag
-        printf("im at button A flag\n");
-    	_slingshot.force_on_ball(input); // set the velocity of the ball
-    	printf("im at force\n");
-        _ball.ball_update_movement(); // update the movement of the ball
-        printf("im at shooting\n");
-        //check_wall_collision();
-        //printf("wall collision check");
-    }
+    _force.x = _elastic_left.x + _elastic_right.x - 2*pos.x;
+    _force.Y = _elastic_left.Y + _elastic_right.Y - 2*pos.Y;
+    */
+    _force_x = 90 + 136 - 2*_x_position;
+    _force_y = 165 + 165 - 2*_y_position;
+    //int resultant_force = sqrt((_force_x^2)+(_force_y^2));
+    printf("force x=%d, y = %d\n",_force_x,_force_y);
+    
+    //change in velocity with regards to the distance the elastic is pulled 
+    deltaVx = (_force_x/MASS)*TIME; 
+    deltaVy = (_force_y/MASS)*TIME;   
+    printf("delta vx=%d, vy = %d\n",deltaVx,deltaVy);
+    
+    _ball.set_velocity(deltaVx,deltaVy);
     
 }
 
-// with reference to the pong code that was provided 
-void Tictactoe_engine::check_wall_collision() {
-    current_ball_pos = _ball.get_position();
-    Position current_velocity = _ball.get_velocity();
-    if (current_ball_pos.x + 10 <= 0) {
-        // hit left wall
-        current_ball_pos.x = 10; // prevents the ball from going out of the screen 
-        current_velocity.x = -current_velocity.x; // make the ball move in the opposite direction
-    } else if (current_ball_pos.x + 10 >= 240) {
-        // hit right wall
-        current_ball_pos.x = 240; // prevents the ball from going out of the screen 
-        current_velocity.x = -current_velocity.x; // make the ball move in the opposite direction
-    } else if (current_ball_pos.y + 10 >= 240) {
-        // hit bottom wall
-        current_ball_pos.y = 240; // hit the ground 
-    }
-    
-    _ball.set_velocity(current_velocity);
-    _ball.set_position(current_ball_pos.x,current_ball_pos.y);
-    
+void Slingshot::set_elastic_position(int x_position, int y_position) {
+    _x_position = x_position;
+    _y_position = y_position;
 }
 
-int Tictactoe_engine::check_hit_board() {
-    /* tic tac toe board labelled as follows 
+//end//
+//cell//
+class Cell {
+  public:
+    //void draw();
+    void set_cell(int block,char value);
+    int get_block();
+    char get_value();
+  private:
+    int _block;
+    char _value;
+};
+
+void Cell::set_cell(int block,char value) {
+  _block = block;
+  _value = value;
+}
+
+
+int Cell::get_block() {
+  return _block;
+}
+
+char Cell::get_value() {
+  return _value;
+}
+
+//end//
+//blocks//
+class Blocks {
+    public:
+        //drawing of one block 
+        void draw_block(uint16_t colour); 
+
+        void init(); 
+
+        //set the block number to tell which block we are referring to 
+        void set_block(int block_number);
+
+        //get the coordinates of the block we choose
+        void get_block_pos(Position &blockpos);
+
+        void update_block();
+        void set_block_vector();
+        void update_block_vector(); 
+
+        void set_block_position(int x, int y,int width,int height);
+        int get_block_x_pos();
+        int get_block_y_pos();
+
+
+
+    private:
+        std::vector<int> _blocks_vector;
+        int _block;
+        int _x_position; 
+        int _y_position;
+        int _width; 
+        int _height;
+};
+
+
+void Blocks::draw_block(uint16_t colour) {
+    BSP_LCD_SetTextColor(colour);
+    BSP_LCD_FillRect(_x_position,_y_position,_width,_height);
+}
+
+void Blocks::set_block_position(int x, int y,int width,int height) {
+    _x_position = x;
+    _y_position = y;
+    _width = width;
+    _height = height;
+}
+
+int Blocks::get_block_x_pos() {
+    return _x_position;
+}
+
+int Blocks::get_block_y_pos() {
+    return _y_position;
+}
+
+//end//
+//board//
+class Board {
+  public:
+    void init();
+    void draw();
+    void update();
+    void set_cell(int cell, char value);
+  private:
+    Cell _cell[9];
+    int _cell_number; 
+    char _value;
+
+};
+
+void Board::init() {
+  _cell[1].set_cell(1,'1');
+  _cell[2].set_cell(2,'2');
+  _cell[3].set_cell(3,'3');
+  _cell[4].set_cell(4,'4');
+  _cell[5].set_cell(5,'5');
+  _cell[6].set_cell(6,'6');
+  _cell[7].set_cell(7,'7');
+  _cell[8].set_cell(8,'8');
+  _cell[9].set_cell(9,'9');
+}
+
+void Board::draw() {
+    //tictactoe board lines
+    BSP_LCD_SetTextColor(LCD_COLOR_BLACK);
+    BSP_LCD_DrawLine(105,50,105,140);
+    BSP_LCD_DrawLine(75,80,165,80);
+    BSP_LCD_DrawLine(135,50,135,140);
+    BSP_LCD_DrawLine(75,110,165,110);
+    
+    printf("cell 1 %c\n",_cell[1].get_value());
+    printf("cell 2 %c\n",_cell[2].get_value());
+    printf("cell 3 %c\n",_cell[3].get_value());
+    printf("cell 4 %c\n",_cell[4].get_value());
+    printf("cell 5 %c\n",_cell[5].get_value());
+    printf("cell 6 %c\n",_cell[6].get_value());
+    printf("cell 7 %c\n",_cell[7].get_value());
+    printf("cell 8 %c\n",_cell[8].get_value());
+    printf("cell 9 %c\n",_cell[9].get_value());
+}
+
+void Board::update() {
+  switch (_cell_number) {
+    case 1:
+    printf("case cell 1, set value:%c\n",_value);
+    _cell[1].set_cell(1,_value);
+    printf("case cell 1, get value:%c\n",_cell[1].get_value());
+    break;
+    case 2:
+    printf("case cell 2, set value:%c\n",_value);
+    _cell[2].set_cell(2,_value);
+    printf("case CELL 2,get value:%c\n",_cell[2].get_value());
+    break;
+    case 3:
+    printf("case cell 3, set value:%c\n",_value);
+    _cell[3].set_cell(3,_value);
+    printf("case cell 3,get value:%c\n",_cell[2].get_value());
+    break;
+    case 4:
+    printf("case cell 4, set value:%c\n",_value);
+    _cell[4].set_cell(4,_value);
+    printf("case cell 4,get value:%c\n",_cell[4].get_value());
+    break;
+    case 5:
+    printf("case cell 5, set value:%c\n",_value);
+    _cell[5].set_cell(5,_value);
+    printf("case cell 5,get value:%c\n",_cell[5].get_value());
+    break;
+    case 6:
+    printf("case cell 6, set value:%c\n",_value);
+    _cell[6].set_cell(6,_value);
+    printf("case cell 6 get value:%c\n",_cell[6].get_value());
+    break;
+    case 7:
+    printf("case cell 7, set value:%c\n",_value);
+    _cell[7].set_cell(7,_value);
+    printf("case cell 7 get value:%c\n",_cell[7].get_value());
+    break;
+    case 8:
+    printf("case cell 8, set value:%c\n",_value);
+    _cell[8].set_cell(8,_value);
+    printf("case cell 8 get value:%c\n",_cell[8].get_value()); 
+    break;
+    case 9:
+    printf("case cell 9, set value:%c\n",_value);
+    _cell[9].set_cell(9,_value);
+    printf("case cell 9 get value:%c\n",_cell[9].get_value());
+    break;
+    default:
+    printf("%c",_value);
+     printf("case default");
+    break;
+  }
+}
+
+void Board::set_cell(int cell, char value) {
+    _cell_number = cell;
+    _value = value; 
+}
+
+//end//
+//block engine//
+class Blocks_engine {
+    public:
+        void init();
+        // draw blocks
+        void draw(uint16_t colour, std::vector<int> vector);
+        void draw_updated_board(std::vector<int> vector, std::string string);
+        // update the collision blocks
+        void update(int block);
+        void update_input(std::vector<int> vector);
+        // set the blocks coordinates 
+        void set_blocks();
+        // get a random input from the computer 
+        void computer_input(std::vector<int> vector,int &input);
+        void set_output_vector();
+        void get_block_coordinates(int block_number,int &x, int &y);
+        int get_width();
+        int get_height();
+        void check_block_collision();
+        int get_block_for_collision(int x, int y);
+        std::vector<int> get_block_vector();
+        std::vector<int> get_collision_vector();
+
+    private:
+        TTT_Ball _ball;
+        Blocks _block[9]; 
+        Board _board;
+        int _width; 
+        int _height;
+        char _playermove;
+        int _comp_input;
+        //flag
+        int _block_collision;
+        int _collided_block_number;
+        //int _board[9];
+        std::vector<int> _blocks_vector;
+        std::vector<int> _collision_vector;
+        std::vector<int> _output_vector;
+};
+
+void Blocks_engine::init() {
+    _width = 30; 
+    _height = 20; 
+    for (int i = 1; i < 10; i++) {
+        _blocks_vector.push_back(i);
+    }
+}
+
+
+void Blocks_engine::draw(uint16_t colour, std::vector<int> vector) {
+    for(std::vector<int>::iterator i = vector.begin(); i < vector.end(); i++)  {
+        _block[*i].draw_block(colour);
+        //BSP_LCD_SetBackColor(LCD_COLOR_WHITE);
+        BSP_LCD_SetTextColor(LCD_COLOR_BLACK);
+        BSP_LCD_SetFont(&Font16);
+        char buffer[1];
+        sprintf(buffer, "%d", *i);
+        if (*i >= 4 && *i <= 6) {
+            BSP_LCD_DisplayStringAt(_block[*i].get_block_x_pos() +_height/3, _block[*i].get_block_y_pos() + 5, (uint8_t *)buffer, LEFT_MODE);
+        } else {
+            BSP_LCD_DisplayStringAt(_block[*i].get_block_x_pos() +_height/3, _block[*i].get_block_y_pos() + _width/3 , (uint8_t *)buffer, LEFT_MODE);
+        }
+        
+        /*
+        switch (*i) {
+        case 1: 
+          printf("block 1\n");
+          BSP_LCD_DisplayStringAt(_block[1].get_block_x_pos() +_height/3, _block_1.get_block_y_pos() + _width/3 , (uint8_t *)"1", LEFT_MODE);
+          break;
+        case 2: 
+          printf(" block 2\n");
+          BSP_LCD_DisplayStringAt(_block[2].get_block_x_pos() +_height/3, _block_2.get_block_y_pos() + _width/3 , (uint8_t *)"2", LEFT_MODE);
+          break;
+        case 3: 
+          printf(" block 3\n");
+
+          BSP_LCD_DisplayStringAt(_block_3.get_block_x_pos() +_height/3, _block_3.get_block_y_pos() + _width/3 , (uint8_t *)"3", LEFT_MODE);
+          break;
+        case 4: 
+          printf(" block 4\n");
+
+          BSP_LCD_DisplayStringAt(_block_4.get_block_x_pos() +_height/3, _block_4.get_block_y_pos() + 5, (uint8_t *)"4", LEFT_MODE);
+          break;
+        case 5: 
+          printf(" block 5\n");
+          BSP_LCD_DisplayStringAt(_block_5.get_block_x_pos() +_height/3, _block_5.get_block_y_pos() + 5, (uint8_t *)"5", LEFT_MODE);
+          break;
+        case 6: 
+          printf(" block 6\n");
+          BSP_LCD_DisplayStringAt(_block_6.get_block_x_pos() +_height/3, _block_6.get_block_y_pos()+ 5, (uint8_t *)"6", LEFT_MODE);
+          break;
+        case 7: 
+          printf(" block 7\n");
+          BSP_LCD_DisplayStringAt(_block_7.get_block_x_pos() +_height/3, _block_7.get_block_y_pos() + _width/3 , (uint8_t *)"7", LEFT_MODE);
+          break;
+        case 8: 
+          printf(" block 8\n");
+          BSP_LCD_DisplayStringAt(_block_8.get_block_x_pos() +_height/3, _block_8.get_block_y_pos() + _width/3 , (uint8_t *)"8", LEFT_MODE);
+          break;
+        case 9: 
+          printf(" block 9\n");
+          BSP_LCD_DisplayStringAt(_block[9].get_block_x_pos() +_height/3, _block[9].get_block_y_pos() + _width/3 , (uint8_t *)"9", LEFT_MODE);
+          break;
+        default: 
+          printf("This block is invalid\n");
+          break;
+      }
+      */
+    }
+}
+
+/*
+void Blocks_engine::draw_updated_board(std::vector<int> vector, std::string string) {
+    //store the result into a vector
+    BSP_LCD_SetTextColor(LCD_COLOR_BLACK);
+    BSP_LCD_DrawLine(105,50,105,140);
+    BSP_LCD_DrawLine(75,80,165,80);
+    BSP_LCD_DrawLine(135,50,135,140);
+    BSP_LCD_DrawLine(75,110,165,110);
+    
+    int player = vector.size()%2;
+    char player_move;
+
+    if (player == USER) {
+      player_move = USERMOVE;
+    } else {
+      player_move = COMPUTERMOVE;
+    }
+    
+    char buffer[1];
+    //update_input(vector);
+    BSP_LCD_SetBackColor(LCD_COLOR_CYAN);
+    sprintf(buffer,"%c",player_move);
+
+    for(std::vector<int>::iterator i = vector.begin(); i < vector.end(); i++) {
+        switch (*i) {
+            case 1:
+                BSP_LCD_SetBackColor(LCD_COLOR_CYAN);
+                if(string == "HIT") {
+                    BSP_LCD_DisplayStringAt(85, 60, (uint8_t *)buffer, LEFT_MODE);
+                } else {
+                    BSP_LCD_DisplayStringAt(85, 60, (uint8_t *)"1", LEFT_MODE);
+                }
+                break;
+            case 2:
+                BSP_LCD_SetBackColor(LCD_COLOR_CYAN);
+                if(string == "HIT") {
+                    BSP_LCD_DisplayStringAt(115, 60, (uint8_t *)buffer, LEFT_MODE);
+                } else {
+                    BSP_LCD_DisplayStringAt(115, 60, (uint8_t *)"2", LEFT_MODE);
+                }
+                break;
+            case 3:
+                BSP_LCD_SetBackColor(LCD_COLOR_CYAN);
+                if(string == "HIT") {
+                    BSP_LCD_DisplayStringAt(145, 60, (uint8_t *)buffer, LEFT_MODE);
+                } else {
+                    BSP_LCD_DisplayStringAt(145, 60, (uint8_t *)"3", LEFT_MODE);
+                }
+                break;
+            case 4:
+                BSP_LCD_SetBackColor(LCD_COLOR_LIGHTGREEN);
+                if(string == "HIT") {
+                    BSP_LCD_DisplayStringAt(85, 90, (uint8_t *)buffer, LEFT_MODE);
+                } else {
+                    BSP_LCD_DisplayStringAt(85, 90, (uint8_t *)"4", LEFT_MODE);
+                }
+                break;
+            case 5:
+                BSP_LCD_SetBackColor(LCD_COLOR_LIGHTGREEN);
+                if(string == "HIT") {
+                    BSP_LCD_DisplayStringAt(115, 90, (uint8_t *)buffer, LEFT_MODE);
+                } else {
+                    BSP_LCD_DisplayStringAt(115, 90, (uint8_t *)"5", LEFT_MODE);
+                }
+                break;
+            case 6:
+                BSP_LCD_SetBackColor(LCD_COLOR_LIGHTGREEN);
+                if(string == "HIT") {
+                    BSP_LCD_DisplayStringAt(145, 90, (uint8_t *)buffer, LEFT_MODE);
+                } else {
+                    BSP_LCD_DisplayStringAt(145, 90, (uint8_t *)"6", LEFT_MODE);
+                }
+                break;
+            case 7:
+                BSP_LCD_SetBackColor(LCD_COLOR_LIGHTGREEN);
+                if(string == "HIT") {
+                    BSP_LCD_DisplayStringAt(85, 120, (uint8_t *)buffer, LEFT_MODE);
+                } else {
+                    BSP_LCD_DisplayStringAt(85, 120, (uint8_t *)"7", LEFT_MODE);
+                }
+                break;
+            case 8:
+                BSP_LCD_SetBackColor(LCD_COLOR_LIGHTGREEN);
+                if(string == "HIT") {
+                    BSP_LCD_DisplayStringAt(145, 120, (uint8_t *)buffer, LEFT_MODE);
+                } else {
+                    BSP_LCD_DisplayStringAt(145, 120, (uint8_t *)"8", LEFT_MODE);
+                }
+                break;
+            case 9:
+                BSP_LCD_SetBackColor(LCD_COLOR_LIGHTGREEN);
+                if(string == "HIT") {
+                    BSP_LCD_DisplayStringAt(115, 120, (uint8_t *)buffer, LEFT_MODE);
+                } else {
+                    BSP_LCD_DisplayStringAt(115, 120, (uint8_t *)"9", LEFT_MODE);
+                }
+                break;
+            default: 
+                printf("Something is not working right\n");
+                break;
+        }
+    }
+    
+}
+*/
+
+
+void Blocks_engine::update(int block) {
+    if(_collided_block_number != block) {
+        if(block != 0 ) {
+            _collided_block_number = block;
+            printf("block = %d\n",block);
+            _blocks_vector.erase(_blocks_vector.begin() + (block - 1));
+            //store the collided block into the _collision_vector
+            _collision_vector.push_back(block);
+            //_board.update(block,USERMOVE);
+            _board.set_cell(block,USERMOVE);
+            //_playermove = USERMOVE;
+            //computer input 
+            int input;
+            computer_input(_collision_vector,input);
+            _collision_vector.push_back(input);
+            _board.set_cell(input,COMPUTERMOVE);
+            //_board.update(input,COMPUTERMOVE);
+            //_playermove = COMPUTERMOVE;
+        }
+    } 
+}
+
+/*
+void Blocks_engine::update_input(std::vector<int> vector) {
+    //char buffer;
+    //sprintf(buffer,"%c",PLAYER_MOVE);
+    printf("i AM AT UPDATE");
+    int player = vector.size()%2;
+    char player_move;
+
+    if (player == USER) {
+      player_move = USERMOVE;
+    } else {
+      player_move = COMPUTERMOVE;
+    }
+    
+    //std::vector<int> _collision_vector;
+    printf("%d",vector.back());
+    
+    
+    switch (vector.back()) {
+      case 1:
+        
+        printf("I am at 1\n");
+        break;
+      case 2:
+        _output_vector.erase(_output_vector.begin()+1);
+        _output_vector.insert(_output_vector.begin()+1,player_move);
+        printf("I am at 2\n");
+        break;
+      case 3:
+        _output_vector.erase(_output_vector.begin()+2);
+        _output_vector.insert(_output_vector.begin()+2,player_move);
+        printf("I am at 3\n");
+        break;
+      case 4:
+        _output_vector.erase(_output_vector.begin()+3);
+        _output_vector.insert(_output_vector.begin()+3,player_move);
+        printf("I am at 4\n");
+        break;
+      case 5:
+        _output_vector.erase(_output_vector.begin()+4);
+        _output_vector.insert(_output_vector.begin()+4,player_move);
+        printf("I am at 5\n");
+        break;
+      case 6:
+        _output_vector.erase(_output_vector.begin()+5);
+        _output_vector.insert(_output_vector.begin()+5,player_move);
+        printf("I am at 6\n");
+        break;
+      case 7:
+        _output_vector.erase(_output_vector.begin()+6);
+        _output_vector.insert(_output_vector.begin()+6,player_move);
+        printf("I am at 7\n");
+        break;
+      case 8:
+        _output_vector.erase(_output_vector.begin()+7);
+        _output_vector.insert(_output_vector.begin()+7,player_move);
+        printf("I am at 8\n");
+        break;
+      case 9:
+        _output_vector.erase(_output_vector.begin()+8);
+        _output_vector.insert(_output_vector.begin()+8,player_move);
+        printf("I am at 9\n");
+        break;
+      default:
+          printf("somethings not rightt!! %d\n",vector.back());
+          break;
+   
+      
+    } 
+    
+    
+
+}
+
+*/
+
+
+void Blocks_engine::set_blocks() {
+    /*
+    tic tac toe board labelled as follows 
         __1__|__2_|__3__
         __4__|__5_|__6__
           7  |  8 |  9
+    each number represents a block 
     */
-   current_ball_pos = _ball.get_position(); 
-   // the ball must lie in the board to be considered a hit
-   //min x position of the board + radius of the ball
-   int min_x = 15+10;
-   //max x position of the board - radius of the ball
-   int max_x = 165-10;
-   //min y position of the board + radius of the ball
-   int min_y = 10 + 10;
-   //min y position of the board + radius of the ball
-   int max_y = 100 - 10;
-   if(current_ball_pos.x >= min_x && current_ball_pos.x <= max_x) {
-       if(current_ball_pos.y >= min_y && current_ball_pos.y <= max_y) {
-           // ball sucessfully hit the board
-           return 1;
-       }
-   } else return 0;
+    //lies on the left side of the screen
+    //placed vertically so the height and width is swapped
+    _block[1].set_block_position(0,_height,_height,_width);
+    _block[2].set_block_position(0,_height + 50,_height,_width);
+    _block[3].set_block_position(0,_height + 100,_height,_width);
+    //placed horizontally
+    //lies on the top of the screen
+    _block[4].set_block_position(50,0,_width,_height);
+    _block[5].set_block_position(110,0,_width,_height);
+    _block[6].set_block_position(170,0,_width,_height);
+    //placed vertically 
+    //lies on the right side of the screen
+    //start x coordinate is the screen size - width of the block
+    _block[7].set_block_position(SCREENSIZE_Y-_height,_height,_height,_width);
+    _block[8].set_block_position(SCREENSIZE_Y-_height,_height + 50,_height,_width);
+    _block[9].set_block_position(SCREENSIZE_Y-_height,_height + 100,_height,_width);
+}
+
+void Blocks_engine::computer_input(std::vector<int> vector,int &input) {
+    srand(time(NULL));
+    //if there are odd number of elements in the collision vector 
+    // the computer will play
+    int test_input = rand()%9 + 1 ; 
+    // iterator to find if it is repeated 
+    std::vector<int>::iterator it_number_exists;
+    it_number_exists  = find (vector.begin(), vector.end(), test_input);
+    if(it_number_exists == vector.end()) {
+        //if it does not exist, store the number into input
+        input = test_input;
+        //store in _comp_input;
+        _comp_input = input; 
+        printf("input = %d",input);
+        //computer_input(vector);
+    } else {
+        //loop through the function until the number does not appear in the vector
+        computer_input(vector,input);
+    }
+}
+
+int Blocks_engine::get_block_for_collision(int x, int y) {
+    //blocks with the same y limits:
+    //1. blocks 4, 5 and 6
+    //2. blocks 1 and 7 
+    //3. blocks 2 and 8
+    //4. blocks 3 and 9
+    //blocks with the same x limits
+    //1. blocks 1, 2 and 3
+    //2. blocks 7, 8 and 9
+    //blocks 4, 5 and 6 have their own x limits 
+
+   
+    //grouping the ones with the most similarities together 
+    if(y <= _height) {
+        //blocks 4, 5 and 6
+        if(x >= 50 && x <= 50+_width) {
+            //block 4
+            return 4;
+        } else if (x >= 110 && x <= 110+_width) {
+            //block 5
+            return 5;
+        } else if (x >= 170 && x <= 170+_width) {
+            //block 6
+            return 6;
+        } else {
+            //no collision
+            return 0;
+        }
+    } else if (x <= _height) {
+        //blocks 1, 2 and 3
+        if(y >= _height && y <= _height + _width) {
+            //block 1
+            return 1;
+        } else if ((y >= _height + 50) && (y <= _height + 50 + _width)) {
+            //block 2
+            return 2;
+        } else if ((y >= _height + 100) && (y <= _height + 100 + _width)) {
+            //block 3
+            return 3;
+        } else {
+            //no collision
+            return 0;
+        }
+    } else if (x >= SCREENSIZE_Y - _height) {
+        //blocks 7, 8 and 9
+        if(y >= _height && y <= _height + _width){
+            //block 7
+            return 7;
+        } else if ((y >= _height + 50) && (y <= _height + 50 + _width)) {
+            //block 8
+            return 8;
+        } else if ((y >= _height + 100) && (y <= _height + 100 + _width)) {
+            //block 9
+            return 9;
+        } else {
+            //no collision
+            return 0;
+        }
+    } else {
+        return 0;
+    }
+
 }
 
 
 
+std::vector<int> Blocks_engine::get_block_vector() {
+    return _blocks_vector;
+}
 
-void Tictactoe_engine::set_colour(uint16_t colour) { _colour = colour;}
+std::vector<int> Blocks_engine::get_collision_vector(){
+    return _collision_vector;
+}
 
-int Tictactoe_engine::get_colour() {return _colour;}
+int Blocks_engine::get_width() {
+    return _width;
+}
 
-/////////////////////////////////////////main////////////////////////////
-/////////objects////////
-Tictactoe_engine engine;
-Ball ball;
+int Blocks_engine::get_height() {
+    return _height;
+}
 
-void init();
-void draw();
 
-void init() {
+//end//
+//engine//
+class Engine {
+    public:
+        void init(int ball_x,int ball_y);
+        void draw(uint16_t colour);
+        void draw_user();
+        void set_touch_position(int &ball_touch_detected);
+        void update(int x_position, int y_position);
+        void check_wall_collision();
+        int check_block_collision();
+
+
+    private:
+        TTT_Ball _ball;
+        Slingshot _slingshot;
+        Blocks _block;
+        Board _board;
+        Blocks_engine _block_engine;
+        std::vector<int> _blocks_vector;
+        int _touch_x;
+        int _touch_y;
+        int _stop_ball;
+        int _player;
+};
+
+
+void Engine::init(int ball_x,int ball_y) {
+    _ball.set_position(ball_x, ball_y);
+    //default position of the elastic is the same as the position of the ball
+    _slingshot.init(ball_x,ball_y);
+
+    _block_engine.init();
+    _block_engine.set_blocks();
+    //_block_engine.set_output_vector();
+    _stop_ball = NO;
+    printf("Engine init: Success!\n");
+}
+
+void Engine::draw(uint16_t colour) {
+    _slingshot.draw_slingshot();
+    //_block.draw_board();
+    printf("ball coordinates DRAW x=%d,y=%d\n",_ball.get_x_position(),_ball.get_y_position());
+    //get the coordinates of the ball since the elastic move together with the ball
+    _slingshot.draw_elastic(_ball.get_x_position(),_ball.get_y_position());
+
+    _block_engine.draw(LCD_COLOR_WHITE, _block_engine.get_block_vector());
+    _block_engine.draw(LCD_COLOR_RED, _block_engine.get_collision_vector());
+    
+   //_block_engine.draw_updated_board(_block_engine.get_block_vector(), "vector");
+    //_block_engine.draw_updated_board(_block_engine.get_collision_vector(), "HIT");
+    _board.draw();
+    _ball.draw(colour);
+}
+
+void Engine::set_touch_position(int &ball_touch_detected) {
+    //when there is touch detected,get the coordinates of the touch and set it to the ball position
+    _ball.get_touch_position(ball_touch_detected);
+    if(ball_touch_detected == YES) {
+        //draw the ball with the updated coordinates
+        _slingshot.set_elastic_position(_ball.get_x_position(), _ball.get_y_position());
+    }
+    
+}
+
+
+void Engine::update(int x_position, int y_position) {
+    
+    //_ball.set_velocity(x_position, y_position);
+    //update the movement of the ball when it is released from the slingshot 
+    if(_stop_ball == YES) {
+        _ball.set_velocity(0, 0);
+    } else {
+        int deltaVx,deltaVy;
+        _slingshot.force_on_ball(deltaVx, deltaVy); 
+        // sets the velocity of the ball
+        _ball.set_velocity(deltaVx, deltaVy);
+    }
+    
+    _ball.update();
+    _block_engine.update(check_block_collision());
+    _board.update();
+    //_block_engine.update_input(_block_engine.get_collision_vector());
+    check_wall_collision();
+}
+
+void Engine::check_wall_collision() {
+    if (check_block_collision() != 0) {
+        _stop_ball = YES;
+    } else if (_ball.get_x_position() == 0 && _ball.get_y_position() == 0) {
+        _stop_ball = YES;
+    }
+}
+
+int Engine::check_block_collision() {
+    //reset every time
+    int block_collided = 0;
+    block_collided = _block_engine.get_block_for_collision(_ball.get_x_position(),_ball.get_y_position());
+    return block_collided;
+}
+
+//end//
+
+int main() {
+    printf("Draw on the screen!\n");
+
     BSP_LCD_Init();
+
     /* Touchscreen initialization */
     if (BSP_TS_Init(BSP_LCD_GetXSize(), BSP_LCD_GetYSize()) == TS_ERROR) {
         printf("BSP_TS_Init error\n");
     }
     
-    buttonA_init();
-    engine.tictactoe_init();
-}
+    Engine engine;
+    TTT_Ball ball;
+    
+    
+    //printf("ball coordinates x=%d,y=%d",ball.get_x_position(),ball.get_y_position());
+    
+    //create an empty vector
+    std::vector<int> touch_vector;
+    
+    
+    //flag to check if the position has been set
+    //initialise to start the loop
+    int position_set = NO;
+    
+    int touch_detected;
+    int touch_released = NO;
+    int x,y;
+    int timer = 600;
+    Board _board;
+    _board.init();
 
-void draw() {
-    /* Clear the LCD */
-    BSP_LCD_Clear(LCD_COLOR_WHITE);
-    printf("clear\n");
-    engine.draw();
-    printf("draw\n");
-}
-
-int main() {
-    Position input;
-    
-    init();
-    printf("im here init\n");
-    engine.set_colour(LCD_COLOR_YELLOW); // set colour of the ball 
-    printf("im here colour\n");
-    draw();
-    printf("im here draw\n");
-    
-    
-    while(1){
-        if (g_touch_flag == 0){
-            user_input(input);
-            //engine.update(input);
-            //draw();
-            //printf("main menu if loop\n");
-        } else {
-            printf("flag A = %d",g_buttonA_flag);
-            engine.update(input);
-            draw();
-            printf("main menu else loop\n");
+    while(timer > 0) {
+        engine.init(BALL_X,BALL_Y);
+        engine.draw(LCD_COLOR_DARKBLUE);
+        while(touch_released == NO) {
+            //get the touch position and update the graphics 
+            engine.set_touch_position(touch_detected);
+            printf("Touch while loop = %d\n",touch_detected);
+            engine.draw(LCD_COLOR_DARKBLUE);
+            
+            // using of vector to check the touch detection
+            if(touch_vector.size() > 1) {
+                touch_vector.erase(touch_vector.begin());
+            } else {
+                touch_vector.push_back(touch_detected);
+            }
+            
+            //want to make sure that when the user releases touch, the ball is released from the slingshot
+            //to do so, need to first make sure that touch is detected
+            if(touch_vector[0] == YES) {
+                //check when the touch is released
+                if (touch_vector[0] != touch_vector[1]) {
+                    //flag to indicate that touch is released
+                    touch_released = YES;
+                    x = ball.get_x_position();
+                    y = ball.get_y_position();
+                    printf("touch released!!!!\n");
+                    printf("TOUCH VALL POS %d,%d\n", ball.get_x_position(),ball.get_y_position());
+                } else {
+                    //flag to indicate that touch has not been released yet
+                    touch_released = NO;
+                    if(ball.get_y_position() < 165) {
+                        ball.set_position(ball.get_x_position(),165);
+                    }
+                }
+            }
+            printf("vector size = %lu\n",touch_vector.size());
+            wait_ms(10);
         }
-        wait_ms(1);
-    }
-    
-}
 
+        // WHEN TOUCH IS RELEASED
+        
+        //int count = 0;
+        //count < 10
+        while(engine.check_block_collision() == 0 ) {
+            printf("!!!!!ball position %d,%d\n", ball.get_x_position(),ball.get_y_position());
+            engine.update(x, y);
+            //engine.check_wall_collision();
+            engine.draw(LCD_COLOR_DARKBLUE);
+            //user.draw();
+            //count++;
+            //printf("Timer = %d\n",count);
+            wait_ms(10);
+        }
+        
+        touch_released = NO;
+        timer--;
+        printf("Timer = %d\n",timer);
+        wait_ms(10);
+    }
+}
